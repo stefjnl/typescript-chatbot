@@ -17,7 +17,9 @@ export function MarkdownRenderer({ content, isStreaming }: MarkdownRendererProps
     return null;
   }
 
-  if (isStreaming) {
+  const containsLikelyTable = /(^|\n)\s*\|.+\|/.test(content);
+
+  if (isStreaming || containsLikelyTable) {
     return <pre className="whitespace-pre-wrap break-words font-sans text-sm">{content}</pre>;
   }
 
