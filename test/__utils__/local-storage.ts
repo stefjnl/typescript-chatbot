@@ -53,3 +53,45 @@ export function resetMockLocalStorage(target: typeof globalThis = globalThis): v
     storage.clear();
   }
 }
+
+/**
+ * Executes a test function with localStorage configured to throw errors.
+ * Useful for testing error handling when localStorage is unavailable.
+ * Automatically restores the original localStorage descriptor after execution.
+ * 
+ * @param testFn - The test function to execute with broken localStorage
+ * @param errorMessage - Custom error message to throw (default: "localStorage is unavailable")
+ * @param target - The global object to modify (default: globalThis)
+ * 
+ * @example
+ * ```ts
+ * it("handles localStorage errors gracefully", () => {
+ *   withLocalStorageError(() => {
+ *     expect(loadData()).toEqual([]);
+ *   });
+ * });
+ * ```
+ */
+export function withLocalStorageError(
+  testFn: () => void,
+  errorMessage: string = "localStorage is unavailable",
+  target: typeof globalThis = globalThis
+): void {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(target, "localStorage");
+  
+  try {
+    Object.defineProperty(target, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error(errorMessage);
+      },
+    });
+    
+    testFn();
+  } finally {
+    // Restore the original descriptor
+    if (originalDescriptor) {
+      Object.defineProperty(target, "localStorage", originalDescriptor);
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { installMockLocalStorage, resetMockLocalStorage } from "@/test/__utils__/local-storage";
+import { installMockLocalStorage, resetMockLocalStorage, withLocalStorageError } from "@/test/__utils__/local-storage";
 import type { ChatMessage, Conversation } from "@/types/chat";
 import { afterEach, beforeEach, describe, expect, it, vi, type SpyInstance } from "vitest";
 import {
@@ -45,23 +45,10 @@ describe("conversations storage", () => {
   });
 
   it("returns an empty array when localStorage is unavailable", () => {
-    // Save a reference to the original localStorage
-    const originalDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
-    
-    Object.defineProperty(window, "localStorage", {
-      configurable: true,
-      get() {
-        throw new Error("forbidden");
-      },
-    });
-
-    expect(loadConversations()).toEqual([]);
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
-    
-    // Restore the original descriptor
-    if (originalDescriptor) {
-      Object.defineProperty(window, "localStorage", originalDescriptor);
-    }
+    withLocalStorageError(() => {
+      expect(loadConversations()).toEqual([]);
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
+    }, "forbidden");
   });
 
   it("returns an empty array when no conversations are stored", () => {
