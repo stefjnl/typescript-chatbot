@@ -2,18 +2,18 @@ import { installMockLocalStorage, resetMockLocalStorage, withLocalStorageError }
 import type { ChatMessage, Conversation } from "@/types/chat";
 import { afterEach, beforeEach, describe, expect, it, vi, type SpyInstance } from "vitest";
 import {
-    appendMessage,
-    createConversation,
-    deleteConversation,
-    exportConversations,
-    findConversation,
-    formatTimestamp,
-    generateTitle,
-    importConversations,
-    loadConversations,
-    persistConversations,
-    replaceMessage,
-    upsertConversation,
+  appendMessage,
+  createConversation,
+  deleteConversation,
+  exportConversations,
+  findConversation,
+  formatTimestamp,
+  generateTitle,
+  importConversations,
+  loadConversations,
+  persistConversations,
+  replaceMessage,
+  upsertConversation,
 } from "./conversations";
 
 const CONVERSATIONS_KEY = "conversations";
