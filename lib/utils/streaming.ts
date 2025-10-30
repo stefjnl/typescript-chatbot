@@ -1,4 +1,4 @@
-import type { ChatCompletionChunk } from "@/types/api";
+import { NanoGPTParser, type SSEParser } from "@/lib/utils/sse-parser";
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -14,12 +14,14 @@ const DONE_EVENT = "[DONE]";
 
 /**
  * Transforms the NanoGPT streaming response into a server-sent events stream.
+ * Now supports custom parsers for extensibility (Open/Closed Principle).
  */
 export function createSSEStream(
   response: Response,
   conversationId: string,
   messageId: string,
-  traceId?: string
+  traceId?: string,
+  parser: SSEParser = new NanoGPTParser()
 ): ReadableStream<Uint8Array> {
   if (!response.body) {
     throw new Error("NanoGPT response does not contain a body");
@@ -27,7 +29,6 @@ export function createSSEStream(
 
   const reader = response.body.getReader();
   let buffer = "";
-  let accumulatedContent = "";
   const logPrefix = traceId ? `[SSE][${traceId}]` : "[SSE]";
 
   return new ReadableStream<Uint8Array>({
@@ -176,58 +177,36 @@ export function createSSEStream(
             previewEnd: payload.substring(Math.max(0, payload.length - 100)),
           });
           
-          const chunk = JSON.parse(payload) as ChatCompletionChunk;
-          const deltaReasoning = chunk.choices[0]?.delta?.reasoning ?? "";
-          const delta =
-            chunk.choices[0]?.delta?.content ??
-            chunk.choices[0]?.delta?.text ??
-            deltaReasoning ??
-            "";
-          const messageContent = chunk.choices[0]?.message?.content ?? "";
-          const finishReason = chunk.choices[0]?.finish_reason;
-          
-          console.log(`${logPrefix} payload extracted`, {
-            reasoningPreview: deltaReasoning.slice(0, 200),
-            contentPreview: (delta || messageContent || "").slice(0, 200),
-            finishReason: finishReason ?? "null",
-          });
-
-          let contentPiece = "";
-          if (delta) {
-            contentPiece = delta;
-          } else if (!accumulatedContent && messageContent) {
-            contentPiece = messageContent;
+          // Use the parser to extract content and done status
+          if (!parser.canParse(payload)) {
+            console.warn(`${logPrefix} parser cannot handle payload format`);
+            continue;
           }
 
-          if (contentPiece) {
-            accumulatedContent += contentPiece;
+          const result = parser.parse(payload);
+          
+          console.log(`${logPrefix} payload extracted`, {
+            hasContent: Boolean(result.content),
+            contentPreview: result.content?.slice(0, 200) ?? "",
+            done: result.done,
+          });
+
+          if (result.content) {
             console.log(`${logPrefix} forwarding content piece`, {
-              length: contentPiece.length,
-              accumulatedLength: accumulatedContent.length,
+              length: result.content.length,
             });
             controller.enqueue(
               encodeSse({
                 conversationId,
                 messageId,
-                content: contentPiece,
+                content: result.content,
                 done: false,
               })
             );
           }
 
-          if (finishReason) {
-            console.log(`${logPrefix} stream ending via finish_reason`, finishReason);
-            if (!contentPiece && messageContent && !accumulatedContent) {
-              accumulatedContent = messageContent;
-              controller.enqueue(
-                encodeSse({
-                  conversationId,
-                  messageId,
-                  content: messageContent,
-                  done: false,
-                })
-              );
-            }
+          if (result.done) {
+            console.log(`${logPrefix} stream ending via finish_reason`);
             controller.enqueue(
               encodeSse({ conversationId, messageId, done: true })
             );

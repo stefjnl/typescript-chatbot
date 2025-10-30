@@ -1,10 +1,12 @@
 "use client";
 
+import { FetchChatClient, type ChatClient, type ChatRequest } from "@/lib/api/chat-client";
 import { readSseStream, type SSEHandler } from "@/lib/utils/client-streaming";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseStreamingOptions {
   onError?: (error: string) => void;
+  chatClient?: ChatClient;
 }
 
 export interface UseStreamingResult {
@@ -16,9 +18,10 @@ export interface UseStreamingResult {
 /**
  * Hook for managing SSE streaming state and lifecycle.
  * Handles abort controllers, streaming state, and error handling.
+ * Now supports dependency injection of ChatClient for testability (DIP).
  */
 export function useStreaming(options: UseStreamingOptions = {}): UseStreamingResult {
-  const { onError } = options;
+  const { onError, chatClient = new FetchChatClient() } = options;
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -59,15 +62,13 @@ export function useStreaming(options: UseStreamingOptions = {}): UseStreamingRes
           bodyKeys: Object.keys(body as Record<string, unknown>),
         });
 
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Trace-Id": traceId,
-          },
-          body: JSON.stringify(body),
+        // The body is constructed properly in use-chat-messages with all required fields
+        const bodyWithRequest = body as Record<string, unknown>;
+        const response = await chatClient.sendMessage({
+          ...bodyWithRequest,
+          traceId,
           signal: controller.signal,
-        });
+        } as ChatRequest);
 
         console.log(tracePrefix, "Received initial response", {
           ok: response.ok,
@@ -108,7 +109,7 @@ export function useStreaming(options: UseStreamingOptions = {}): UseStreamingRes
         setIsStreaming(false);
       }
     },
-    [onError]
+    [onError, chatClient]
   );
 
   return {

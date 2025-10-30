@@ -13,11 +13,13 @@ import { useChatMessages } from "@/hooks/use-chat-messages";
 import { useChatNavigation } from "@/hooks/use-chat-navigation";
 import { useConversations } from "@/hooks/use-conversations";
 import { useStreaming } from "@/hooks/use-streaming";
+import { type ChatClient } from "@/lib/api/chat-client";
 import type { ChatMessage } from "@/types/chat";
 
 interface UseChatControllerOptions {
   initialConversationId?: string;
   createNewConversation?: boolean;
+  chatClient?: ChatClient;
 }
 
 type ConversationsState = ReturnType<typeof useConversations>;
@@ -46,7 +48,7 @@ export interface UseChatControllerResult {
 export function useChatController(
   options: UseChatControllerOptions
 ): UseChatControllerResult {
-  const { initialConversationId, createNewConversation = false } = options;
+  const { initialConversationId, createNewConversation = false, chatClient } = options;
   
   // Error state management
   const [error, setError] = useState<string | null>(null);
@@ -70,9 +72,10 @@ export function useChatController(
   // Input state management
   const { input, setInput, clearInput } = useChatInput();
 
-  // Streaming management
+  // Streaming management (with optional chatClient injection for DIP)
   const { isStreaming, startStream, stopStream } = useStreaming({
     onError: setError,
+    chatClient,
   });
 
   // Message sending logic
