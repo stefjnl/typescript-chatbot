@@ -5,7 +5,7 @@ import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import type { ChatMessage } from "@/types/chat";
 import type { VirtualItem } from "@tanstack/react-virtual";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -15,21 +15,24 @@ interface MessageListProps {
 
 export function MessageList({ messages, isStreaming, onRegenerate }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  const items = useMemo(() => {
-    return isStreaming ? [...messages, createTypingMessage()] : messages;
-  }, [messages, isStreaming]);
+  const totalCount = messages.length + (isStreaming ? 1 : 0);
 
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: totalCount,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 120,
     overscan: 6,
-    getItemKey: (index: number) => items[index]?.id ?? index,
+    getItemKey: (index: number) => {
+      if (isStreaming && index === totalCount - 1) {
+        return "typing-indicator";
+      }
+
+      return messages[index]?.id ?? index;
+    },
   });
 
   useEffect(() => {
-    const lastIndex = items.length - 1;
+    const lastIndex = totalCount - 1;
     if (lastIndex < 0) {
       return;
     }
@@ -42,7 +45,7 @@ export function MessageList({ messages, isStreaming, onRegenerate }: MessageList
     });
 
     return () => cancelAnimationFrame(id);
-  }, [items, virtualizer]);
+  }, [totalCount, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
 
@@ -57,9 +60,10 @@ export function MessageList({ messages, isStreaming, onRegenerate }: MessageList
         className="relative w-full"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
       >
-  {virtualItems.map((virtualRow: VirtualItem) => {
-          const message = items[virtualRow.index];
-          if (message.id === "typing-indicator") {
+        {virtualItems.map((virtualRow: VirtualItem) => {
+          const isTypingRow = isStreaming && virtualRow.index === totalCount - 1;
+
+          if (isTypingRow) {
             return (
               <div
                 key={virtualRow.key}
@@ -72,6 +76,7 @@ export function MessageList({ messages, isStreaming, onRegenerate }: MessageList
               </div>
             );
           }
+          const message = messages[virtualRow.index];
 
           return (
             <div
@@ -92,13 +97,4 @@ export function MessageList({ messages, isStreaming, onRegenerate }: MessageList
       </div>
     </div>
   );
-}
-
-function createTypingMessage(): ChatMessage {
-  return {
-    id: "typing-indicator",
-    role: "assistant",
-    content: "",
-    timestamp: new Date().toISOString(),
-  };
 }
