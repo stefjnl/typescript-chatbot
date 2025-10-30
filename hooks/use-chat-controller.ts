@@ -1,30 +1,24 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-    type Dispatch,
-    type SetStateAction,
+  useCallback,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
-import { v4 as uuid } from "uuid";
 
+import { useChatInput } from "@/hooks/use-chat-input";
+import { useChatMessages } from "@/hooks/use-chat-messages";
+import { useChatNavigation } from "@/hooks/use-chat-navigation";
 import { useConversations } from "@/hooks/use-conversations";
-import { readSseStream, type SSEHandler } from "@/lib/utils/client-streaming";
-import type { SSEPayload } from "@/lib/utils/streaming";
+import { useStreaming } from "@/hooks/use-streaming";
 import type { ChatMessage } from "@/types/chat";
 
 interface UseChatControllerOptions {
   initialConversationId?: string;
   createNewConversation?: boolean;
 }
-
-const TRACE_SOURCE = "ChatController";
-
-const generateTraceId = () => uuid();
 
 type ConversationsState = ReturnType<typeof useConversations>;
 
@@ -53,20 +47,11 @@ export function useChatController(
   options: UseChatControllerOptions
 ): UseChatControllerResult {
   const { initialConversationId, createNewConversation = false } = options;
-  const router = useRouter();
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
+  
+  // Error state management
   const [error, setError] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const autoCreatedConversationRef = useRef(false);
 
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-    };
-  }, []);
-
+  // Conversation state management
   const {
     conversations,
     activeConversation,
@@ -82,286 +67,69 @@ export function useChatController(
     importData,
   } = useConversations({ initialConversationId });
 
-  const handleNewChat = useCallback(() => {
-    const conversation = createConversation();
-    router.push(`/chat/${conversation.id}`);
-  }, [createConversation, router]);
+  // Input state management
+  const { input, setInput, clearInput } = useChatInput();
 
-  useEffect(() => {
-    if (!createNewConversation) {
-      autoCreatedConversationRef.current = false;
-    }
-  }, [createNewConversation]);
+  // Streaming management
+  const { isStreaming, startStream, stopStream } = useStreaming({
+    onError: setError,
+  });
 
-  useEffect(() => {
-    if (
-      !createNewConversation ||
-      !isReady ||
-      autoCreatedConversationRef.current
-    ) {
-      return;
-    }
-    handleNewChat();
-    autoCreatedConversationRef.current = true;
-  }, [createNewConversation, handleNewChat, isReady]);
+  // Message sending logic
+  const { sendMessage, regenerateMessage } = useChatMessages({
+    conversationId: activeConversationId ?? "",
+    messages: activeConversation?.messages ?? [],
+    addMessage,
+    updateMessage,
+    startStream,
+  });
 
-  const handleStop = useCallback(() => {
-    const controller = abortControllerRef.current;
-    if (controller) {
-      controller.abort();
-      abortControllerRef.current = null;
-    }
-    setIsStreaming(false);
-  }, []);
+  // Navigation management
+  const { handleNewChat, handleSelectConversation } = useChatNavigation({
+    createNewConversation,
+    activeConversationId,
+    isReady,
+    onCreateConversation: createConversation,
+    onSelectConversation: selectConversation,
+  });
 
-  const handleSelectConversation = useCallback(
-    (id: string) => {
-      selectConversation(id);
-      router.push(`/chat/${id}`);
-    },
-    [router, selectConversation]
-  );
-
+  // Message sending handler
   const handleSendMessage = useCallback(async () => {
-    if (!activeConversation) {
-      return;
-    }
-
-    const trimmed = input.trim();
-    if (!trimmed) {
+    if (!activeConversation || !input.trim()) {
       return;
     }
 
     setError(null);
-    setIsStreaming(true);
-
-    const userMessage: ChatMessage = {
-      id: uuid(),
-      role: "user",
-      content: trimmed,
-      timestamp: new Date().toISOString(),
-    };
-
-    const assistantMessage: ChatMessage = {
-      id: uuid(),
-      role: "assistant",
-      content: "",
-      timestamp: new Date().toISOString(),
-    };
-
-    const validMessages = activeConversation.messages.filter(
-      (msg) => msg.content.trim() !== ""
-    );
-    const messagesToSend = [...validMessages, userMessage];
-
-    addMessage(activeConversation.id, userMessage);
-    addMessage(activeConversation.id, assistantMessage);
-    setInput("");
-
-    const traceId = generateTraceId();
-    const tracePrefix = `[${TRACE_SOURCE}][${traceId}]`;
 
     try {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-
-      console.log(tracePrefix, "Sending chat request", {
-        conversationId: activeConversation.id,
-        userMessageId: userMessage.id,
-        assistantMessageId: assistantMessage.id,
-        messageCount: messagesToSend.length,
-      });
-
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Trace-Id": traceId,
-        },
-        body: JSON.stringify({
-          conversationId: activeConversation.id,
-          messages: messagesToSend,
-          responseMessageId: assistantMessage.id,
-        }),
-        signal: controller.signal,
-      });
-
-      console.log(tracePrefix, "Received initial response", {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        headers: {
-          "content-type": response.headers.get("content-type"),
-          "transfer-encoding": response.headers.get("transfer-encoding"),
-        },
-      });
-
-      let partialContent = "";
-
-      const handlePayload: SSEHandler = (payload: SSEPayload): boolean => {
-        console.log(tracePrefix, "SSE payload received", payload);
-        if (payload.messageId !== assistantMessage.id) {
-          return false;
-        }
-
-        if (payload.content) {
-          partialContent += payload.content;
-          updateMessage(
-            activeConversation.id,
-            assistantMessage.id,
-            partialContent
-          );
-        }
-
-        if (payload.done) {
-          return true;
-        }
-
-        return false;
-      };
-
-      await readSseStream(response, handlePayload, {
-        traceId,
-        source: TRACE_SOURCE,
-      });
-
-      console.log(tracePrefix, "Streaming complete", {
-        partialLength: partialContent.length,
-        finished: partialContent !== "",
-      });
-
-      if (partialContent === "") {
-        updateMessage(activeConversation.id, assistantMessage.id, "");
-      }
-
-      if (!partialContent) {
-        setError("No response received from the assistant");
-      }
-    } catch (streamError) {
-      console.error(tracePrefix, "Streaming error", streamError);
-      if (
-        streamError instanceof DOMException &&
-        streamError.name === "AbortError"
-      ) {
-        setError(null);
-      } else {
-        setError(
-          streamError instanceof Error
-            ? streamError.message
-            : "Failed to complete request"
-        );
-      }
-    } finally {
-      console.log(tracePrefix, "Request finished");
-      abortControllerRef.current = null;
-      setIsStreaming(false);
+      await sendMessage(input);
+      clearInput();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to send message";
+      setError(errorMessage);
     }
-  }, [activeConversation, addMessage, input, updateMessage]);
+  }, [activeConversation, input, sendMessage, clearInput]);
 
+  // Message regeneration handler
   const handleRegenerate = useCallback(
     async (message: ChatMessage) => {
       if (!activeConversation) {
         return;
       }
 
-      setIsStreaming(true);
       setError(null);
 
-      const messagesToSend = activeConversation.messages.filter(
-        (m) => m.id !== message.id && m.content.trim() !== ""
-      );
-
-      updateMessage(activeConversation.id, message.id, "");
-
-      const traceId = generateTraceId();
-      const tracePrefix = `[${TRACE_SOURCE}][${traceId}]`;
-
       try {
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        console.log(tracePrefix, "Regenerate request", {
-          conversationId: activeConversation.id,
-          messageId: message.id,
-          messageCount: messagesToSend.length,
-        });
-
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Trace-Id": traceId,
-          },
-          body: JSON.stringify({
-            conversationId: activeConversation.id,
-            messages: messagesToSend,
-            responseMessageId: message.id,
-            signals: { regenerate: true },
-          }),
-          signal: controller.signal,
-        });
-
-        console.log(tracePrefix, "Received regenerate response", {
-          ok: response.ok,
-          status: response.status,
-          statusText: response.statusText,
-          headers: {
-            "content-type": response.headers.get("content-type"),
-            "transfer-encoding": response.headers.get("transfer-encoding"),
-          },
-        });
-
-        let partialContent = "";
-
-        const handlePayload: SSEHandler = (payload: SSEPayload): boolean => {
-          console.log(tracePrefix, "Regenerate SSE payload", payload);
-          if (payload.messageId !== message.id) {
-            return false;
-          }
-
-          if (payload.content) {
-            partialContent += payload.content;
-            updateMessage(activeConversation.id, message.id, partialContent);
-          }
-
-          if (payload.done) {
-            return true;
-          }
-
-          return false;
-        };
-
-        await readSseStream(response, handlePayload, {
-          traceId,
-          source: TRACE_SOURCE,
-        });
-
-        console.log(tracePrefix, "Regenerate streaming complete", {
-          partialLength: partialContent.length,
-        });
-      } catch (streamError) {
-        console.error(tracePrefix, "Regenerate streaming error", streamError);
-        if (
-          streamError instanceof DOMException &&
-          streamError.name === "AbortError"
-        ) {
-          setError(null);
-        } else {
-          setError(
-            streamError instanceof Error
-              ? streamError.message
-              : "Failed to complete request"
-          );
-        }
-      } finally {
-        console.log(tracePrefix, "Regenerate request finished");
-        abortControllerRef.current = null;
-        setIsStreaming(false);
+        await regenerateMessage(message);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to regenerate message";
+        setError(errorMessage);
       }
     },
-    [activeConversation, updateMessage]
+    [activeConversation, regenerateMessage]
   );
 
+  // Import handler
   const handleImport = useCallback(
     (json: string) => {
       try {
@@ -374,6 +142,7 @@ export function useChatController(
     [importData]
   );
 
+  // Placeholder messages for empty conversations
   const placeholderMessages = useMemo<ChatMessage[]>(
     () => [
       {
@@ -387,17 +156,6 @@ export function useChatController(
     []
   );
 
-  useEffect(() => {
-    if (!isReady || !activeConversationId || createNewConversation) {
-      return;
-    }
-
-    const targetPath = `/chat/${activeConversationId}`;
-    if (window.location.pathname !== targetPath) {
-      router.replace(targetPath);
-    }
-  }, [activeConversationId, createNewConversation, isReady, router]);
-
   return {
     conversations,
     activeConversation,
@@ -410,7 +168,7 @@ export function useChatController(
     placeholderMessages,
     onSendMessage: handleSendMessage,
     onRegenerateMessage: handleRegenerate,
-    onStopStreaming: handleStop,
+    onStopStreaming: stopStream,
     onCreateConversation: handleNewChat,
     onSelectConversation: handleSelectConversation,
     onImportConversations: handleImport,
