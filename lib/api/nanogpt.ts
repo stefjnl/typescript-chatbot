@@ -1,5 +1,5 @@
-import type { ChatMessage } from "@/types/chat";
 import type { ChatCompletionRequest } from "@/types/api";
+import type { ChatMessage } from "@/types/chat";
 
 const API_URL = "https://nano-gpt.com/api/v1/chat/completions";
 const DEFAULT_TIMEOUT_MS = 30_000;

@@ -1,8 +1,8 @@
 "use client";
 
+import { cn } from "@/lib/utils/cn";
 import * as React from "react";
 import TextareaAutosize from "react-textarea-autosize";
-import { cn } from "@/lib/utils/cn";
 
 export type TextareaProps = React.ComponentPropsWithoutRef<typeof TextareaAutosize>;
 

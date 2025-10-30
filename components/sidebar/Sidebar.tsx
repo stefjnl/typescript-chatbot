@@ -1,13 +1,13 @@
 "use client";
 
-import type { ChangeEvent } from "react";
-import { useRef } from "react";
-import { Download, Upload } from "lucide-react";
-import type { Conversation } from "@/types/chat";
+import { ConversationList } from "@/components/sidebar/ConversationList";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { ConversationList } from "@/components/sidebar/ConversationList";
+import type { Conversation } from "@/types/chat";
+import { Download, Upload } from "lucide-react";
+import type { ChangeEvent } from "react";
+import { useRef } from "react";
 
 interface SidebarProps {
   conversations: Conversation[];

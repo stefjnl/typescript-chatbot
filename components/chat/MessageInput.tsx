@@ -1,11 +1,11 @@
 "use client";
 
-import type { ChangeEvent, KeyboardEvent } from "react";
-import { useCallback } from "react";
-import { Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/cn";
+import { Send, Square } from "lucide-react";
+import type { ChangeEvent, KeyboardEvent } from "react";
+import { useCallback } from "react";
 
 interface MessageInputProps {
   value: string;

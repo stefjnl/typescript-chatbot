@@ -1,6 +1,6 @@
+import type { ChatMessage, Conversation } from "@/types/chat";
 import { format } from "date-fns";
 import { v4 as uuid } from "uuid";
-import type { ChatMessage, Conversation } from "@/types/chat";
 
 const CONVERSATIONS_KEY = "conversations";
 const TITLE_FALLBACK = "New Conversation";

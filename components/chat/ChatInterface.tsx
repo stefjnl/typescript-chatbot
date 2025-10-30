@@ -1,18 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { v4 as uuid } from "uuid";
-import type { ChatMessage } from "@/types/chat";
-import type { SSEPayload } from "@/lib/utils/streaming";
-import { Sidebar } from "@/components/sidebar/Sidebar";
-import { MessageList } from "@/components/chat/MessageList";
 import { MessageInput } from "@/components/chat/MessageInput";
+import { MessageList } from "@/components/chat/MessageList";
+import { Sidebar } from "@/components/sidebar/Sidebar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConversations } from "@/hooks/use-conversations";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useConversations } from "@/hooks/use-conversations";
+import type { SSEPayload } from "@/lib/utils/streaming";
+import type { ChatMessage } from "@/types/chat";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { v4 as uuid } from "uuid";
 
 interface ChatInterfaceProps {
   initialConversationId?: string;

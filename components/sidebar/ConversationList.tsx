@@ -1,12 +1,12 @@
 "use client";
 
+import { ConversationItem } from "@/components/sidebar/ConversationItem";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { ChatMessage, Conversation } from "@/types/chat";
+import { Search } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import type { ChatMessage, Conversation } from "@/types/chat";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { ConversationItem } from "@/components/sidebar/ConversationItem";
 
 interface ConversationListProps {
   conversations: Conversation[];

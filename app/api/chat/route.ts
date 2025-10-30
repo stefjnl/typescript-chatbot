@@ -1,9 +1,9 @@
-import { NextRequest } from "next/server";
-import { headers } from "next/headers";
 import { callNanoGPT } from "@/lib/api/nanogpt";
 import { createSSEStream } from "@/lib/utils/streaming";
 import type { ChatApiRequestBody } from "@/types/api";
 import type { ChatMessage } from "@/types/chat";
+import { headers } from "next/headers";
+import { NextRequest } from "next/server";
 
 const MAX_INPUT_TOKENS = 4000;
 

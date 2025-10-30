@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import type { VirtualItem } from "@tanstack/react-virtual";
-import type { ChatMessage } from "@/types/chat";
 import { Message } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/TypingIndicator";
+import type { ChatMessage } from "@/types/chat";
+import type { VirtualItem } from "@tanstack/react-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useMemo, useRef } from "react";
 
 interface MessageListProps {
   messages: ChatMessage[];

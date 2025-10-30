@@ -1,12 +1,12 @@
 "use client";
 
+import { deriveCodeLanguage, markdownRemarkPlugins } from "@/lib/utils/markdown";
+import { Check, Copy } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { nightOwl } from "react-syntax-highlighter/dist/cjs/styles/prism";
-import { Check, Copy } from "lucide-react";
-import { markdownRemarkPlugins, deriveCodeLanguage } from "@/lib/utils/markdown";
 
 interface MarkdownRendererProps {
   content: string;
