@@ -1,9 +1,11 @@
 import type { ChatCompletionRequest } from "@/types/api";
 import type { ChatMessage } from "@/types/chat";
+import { randomUUID } from "node:crypto";
 
-const API_URL = "https://nano-gpt.com/api/v1/chat/completions";
+const API_BASE_URL = "https://nano-gpt.com/api/v1";
+const CHAT_COMPLETIONS_PATH = "/chat/completions";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MODEL = "MiniMax-M2";
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
 
@@ -46,6 +48,7 @@ export interface NanoGPTRequestOptions {
   maxTokens?: number;
   signal?: AbortSignal;
   timeoutMs?: number;
+  traceId?: string;
 }
 
 export async function callNanoGPT({
@@ -53,9 +56,10 @@ export async function callNanoGPT({
   messages,
   stream = true,
   temperature = 0.7,
-  maxTokens = 2000,
+  maxTokens = 10000,
   signal,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  traceId,
 }: NanoGPTRequestOptions): Promise<Response> {
   if (!apiKey) {
     throw Object.assign(new Error("NanoGPT API key is not configured"), {
@@ -64,6 +68,8 @@ export async function callNanoGPT({
     });
   }
 
+  const requestId = traceId ?? randomUUID();
+  const startedAt = Date.now();
   const controller = createAbortController(signal);
   const timer = setTimeout(() => {
     controller.abort("Request timed out");
@@ -78,13 +84,20 @@ export async function callNanoGPT({
     top_p: 1,
     frequency_penalty: 0,
     presence_penalty: 0,
-    cache_control: {
-      enabled: false,
-      ttl: "5m",
-    },
   };
 
-  const response = await fetch(API_URL, {
+  console.log(
+    `[NanoGPT][${requestId}] Sending request`,
+    {
+      model: payload.model,
+      max_tokens: payload.max_tokens,
+      stream: payload.stream,
+      messageCount: payload.messages.length,
+      temperature: payload.temperature,
+    }
+  );
+
+  const response = await fetch(`${API_BASE_URL}${CHAT_COMPLETIONS_PATH}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -94,8 +107,30 @@ export async function callNanoGPT({
     signal: controller.signal,
   }).finally(() => clearTimeout(timer));
 
+  const durationMs = Date.now() - startedAt;
+
+  console.log(
+    `[NanoGPT][${requestId}] Response received`,
+    {
+      status: response.status,
+      statusText: response.statusText,
+      durationMs,
+      contentType: response.headers.get("content-type"),
+      contentLength: response.headers.get("content-length"),
+    }
+  );
+
   if (!response.ok) {
     const message = await safeReadError(response);
+    console.error(
+      `[NanoGPT][${requestId}] Request failed`,
+      {
+        status: response.status,
+        statusText: response.statusText,
+        durationMs,
+        message,
+      }
+    );
     const error = new Error(message);
     (error as Error & { status?: number; retryable?: boolean }).status =
       response.status;
@@ -104,6 +139,7 @@ export async function callNanoGPT({
     throw error;
   }
 
+  console.log(`[NanoGPT][${requestId}] Request completed successfully`);
   return response;
 }
 

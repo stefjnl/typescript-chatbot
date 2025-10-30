@@ -51,7 +51,7 @@ export function Message({ message, isStreaming, onCopy, onRegenerate }: MessageP
             : "bg-card text-card-foreground border"
         )}
       >
-        <MarkdownRenderer content={message.content} />
+  <MarkdownRenderer content={message.content} isStreaming={isStreaming} />
         <div className="mt-3 flex items-center justify-end gap-2 text-xs text-muted-foreground">
           <Tooltip>
             <TooltipTrigger asChild>

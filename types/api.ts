@@ -34,6 +34,7 @@ export interface ChatCompletionChunk {
       content?: string;
       role?: "assistant";
       text?: string;
+      reasoning?: string;
     };
     message?: {
       content?: string;

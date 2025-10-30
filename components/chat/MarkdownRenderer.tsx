@@ -2,48 +2,103 @@
 
 import { deriveCodeLanguage, markdownRemarkPlugins } from "@/lib/utils/markdown";
 import { Check, Copy } from "lucide-react";
-import type { ReactNode } from "react";
-import { useState } from "react";
+import { Component, type ReactNode, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { nightOwl } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
 interface MarkdownRendererProps {
   content: string;
+  isStreaming?: boolean;
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, isStreaming }: MarkdownRendererProps) {
+  if (!content) {
+    return null;
+  }
+
+  if (isStreaming) {
+    return <pre className="whitespace-pre-wrap break-words font-sans text-sm">{content}</pre>;
+  }
+
   return (
-    <ReactMarkdown
-      className="markdown-body"
-      remarkPlugins={markdownRemarkPlugins}
-      components={{
-        code: ({
-          inline,
-          className,
-          children,
-          ...props
-        }: {
-          inline?: boolean;
-          className?: string;
-          children?: ReactNode;
-        }) => {
-          const rawContent = String(children ?? "");
-          if (inline) {
-            return (
-              <code className={className} {...props}>
-                {rawContent}
-              </code>
-            );
-          }
-          const language = deriveCodeLanguage(className);
-          return <CodeBlock language={language} value={rawContent} />;
-        },
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <MarkdownErrorBoundary content={content}>
+      <ReactMarkdown
+        className="markdown-body"
+        remarkPlugins={markdownRemarkPlugins}
+        components={{
+          code: ({
+            inline,
+            className,
+            children,
+            ...props
+          }: {
+            inline?: boolean;
+            className?: string;
+            children?: ReactNode;
+          }) => {
+            const rawContent = String(children ?? "");
+            if (inline) {
+              return (
+                <code className={className} {...props}>
+                  {rawContent}
+                </code>
+              );
+            }
+            const language = deriveCodeLanguage(className);
+            return <CodeBlock language={language} value={rawContent} />;
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </MarkdownErrorBoundary>
   );
+}
+
+type MarkdownErrorBoundaryProps = {
+  content: string;
+  children: ReactNode;
+};
+
+type MarkdownErrorBoundaryState = {
+  hasError: boolean;
+};
+
+class MarkdownErrorBoundary extends Component<
+  MarkdownErrorBoundaryProps,
+  MarkdownErrorBoundaryState
+> {
+  constructor(props: MarkdownErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): MarkdownErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("Markdown render failed", error);
+  }
+
+  componentDidUpdate(prevProps: MarkdownErrorBoundaryProps) {
+    if (prevProps.content !== this.props.content && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <pre className="whitespace-pre-wrap break-words font-sans text-sm">
+          {this.props.content}
+        </pre>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 function CodeBlock({ language, value }: { language?: string; value: string }) {

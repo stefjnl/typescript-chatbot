@@ -19,6 +19,8 @@ interface ChatInterfaceProps {
   createNewConversation?: boolean;
 }
 
+const generateTraceId = () => uuid();
+
 export function ChatInterface({
   initialConversationId,
   createNewConversation = false,
@@ -100,35 +102,67 @@ export function ChatInterface({
       timestamp: new Date().toISOString(),
     };
 
-    addMessage(activeConversation.id, userMessage);
-    setInput("");
-
     const assistantMessage: ChatMessage = {
       id: uuid(),
       role: "assistant",
       content: "",
       timestamp: new Date().toISOString(),
     };
+
+    // Build messages array for API BEFORE updating state
+    // Filter out any messages with empty content (e.g., failed assistant responses)
+    const validMessages = activeConversation.messages.filter(
+      (msg) => msg.content.trim() !== ""
+    );
+    const messagesToSend = [...validMessages, userMessage];
+    
+    // Now update UI state
+    addMessage(activeConversation.id, userMessage);
     addMessage(activeConversation.id, assistantMessage);
+    setInput("");
+
+    const traceId = generateTraceId();
+    const tracePrefix = `[ChatInterface][${traceId}]`;
 
     try {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      console.log(tracePrefix, "Sending chat request", {
+        conversationId: activeConversation.id,
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantMessage.id,
+        messageCount: messagesToSend.length,
+      });
+
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Trace-Id": traceId,
+        },
         body: JSON.stringify({
           conversationId: activeConversation.id,
-          messages: [...activeConversation.messages, userMessage],
+          messages: messagesToSend,
           responseMessageId: assistantMessage.id,
         }),
         signal: controller.signal,
       });
 
+      console.log(tracePrefix, "Received initial response", {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: {
+          "content-type": response.headers.get("content-type"),
+          "transfer-encoding": response.headers.get("transfer-encoding"),
+        },
+      });
+
       let partialContent = "";
 
       const handlePayload = (payload: SSEPayload): boolean => {
+        console.log(tracePrefix, "SSE payload received", payload);
         if (payload.messageId !== assistantMessage.id) {
           return false;
         }
@@ -149,7 +183,12 @@ export function ChatInterface({
         return false;
       };
 
-      await readSseStream(response, handlePayload);
+      await readSseStream(response, handlePayload, traceId);
+
+      console.log(tracePrefix, "Streaming complete", {
+        partialLength: partialContent.length,
+        finished: partialContent !== "",
+      });
 
       if (partialContent === "") {
         updateMessage(activeConversation.id, assistantMessage.id, "");
@@ -159,7 +198,7 @@ export function ChatInterface({
         setError("No response received from the assistant");
       }
     } catch (streamError) {
-      console.error(streamError);
+      console.error(tracePrefix, "Streaming error", streamError);
       if (streamError instanceof DOMException && streamError.name === "AbortError") {
         setError(null);
       } else {
@@ -170,6 +209,7 @@ export function ChatInterface({
         );
       }
     } finally {
+      console.log(tracePrefix, "Request finished");
       abortControllerRef.current = null;
       setIsStreaming(false);
     }
@@ -184,27 +224,55 @@ export function ChatInterface({
       setIsStreaming(true);
       setError(null);
 
+      // Filter out the message being regenerated and any messages with empty content
+      const messagesToSend = activeConversation.messages.filter(
+        (m) => m.id !== message.id && m.content.trim() !== ""
+      );
+
       updateMessage(activeConversation.id, message.id, "");
+
+      const traceId = generateTraceId();
+      const tracePrefix = `[ChatInterface][${traceId}]`;
 
       try {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
+        console.log(tracePrefix, "Regenerate request", {
+          conversationId: activeConversation.id,
+          messageId: message.id,
+          messageCount: messagesToSend.length,
+        });
+
         const response = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Trace-Id": traceId,
+          },
           body: JSON.stringify({
             conversationId: activeConversation.id,
-            messages: activeConversation.messages,
+            messages: messagesToSend,
             responseMessageId: message.id,
             signals: { regenerate: true },
           }),
           signal: controller.signal,
         });
 
+        console.log(tracePrefix, "Received regenerate response", {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          headers: {
+            "content-type": response.headers.get("content-type"),
+            "transfer-encoding": response.headers.get("transfer-encoding"),
+          },
+        });
+
         let partialContent = "";
 
         const handlePayload = (payload: SSEPayload): boolean => {
+          console.log(tracePrefix, "Regenerate SSE payload", payload);
           if (payload.messageId !== message.id) {
             return false;
           }
@@ -221,9 +289,13 @@ export function ChatInterface({
           return false;
         };
 
-        await readSseStream(response, handlePayload);
+        await readSseStream(response, handlePayload, traceId);
+
+        console.log(tracePrefix, "Regenerate streaming complete", {
+          partialLength: partialContent.length,
+        });
       } catch (streamError) {
-        console.error(streamError);
+        console.error(tracePrefix, "Regenerate streaming error", streamError);
         if (streamError instanceof DOMException && streamError.name === "AbortError") {
           setError(null);
         } else {
@@ -234,6 +306,7 @@ export function ChatInterface({
           );
         }
       } finally {
+        console.log(tracePrefix, "Regenerate request finished");
         abortControllerRef.current = null;
         setIsStreaming(false);
       }
@@ -349,38 +422,58 @@ type SSEHandler = (payload: SSEPayload) => boolean | void;
 
 function consumeSseBuffer(
   chunk: string,
-  handler: SSEHandler
+  handler: SSEHandler,
+  traceId?: string
 ): { buffer: string; completed: boolean } {
   let remaining = chunk;
+  const tracePrefix = traceId ? `[ChatInterface][${traceId}]` : "[ChatInterface]";
+
+  console.log(tracePrefix, "consumeSseBuffer invoked", {
+    chunkLength: chunk.length,
+  });
 
   while (true) {
     const boundary = remaining.indexOf("\n\n");
     if (boundary === -1) {
+      console.log(tracePrefix, "No boundary found", {
+        bufferedLength: remaining.length,
+      });
       return { buffer: remaining, completed: false };
     }
 
     const event = remaining.slice(0, boundary);
     remaining = remaining.slice(boundary + 2);
+    console.log(tracePrefix, "Processing event", {
+      eventLength: event.length,
+    });
 
     const dataLine = event
       .split("\n")
       .find((line) => line.trimStart().startsWith("data:"));
     if (!dataLine) {
+      console.log(tracePrefix, "No data line in event");
       continue;
     }
 
     const raw = dataLine.replace(/^data:\s?/, "");
     if (!raw) {
+      console.log(tracePrefix, "Empty data payload");
       continue;
     }
 
     try {
-      const shouldStop = handler(JSON.parse(raw) as SSEPayload) === true;
+      console.log(tracePrefix, "Parsing SSE data", {
+        preview: raw.slice(0, 200),
+      });
+      const payload = JSON.parse(raw) as SSEPayload;
+      const shouldStop = handler(payload) === true;
       if (shouldStop) {
+        console.log(tracePrefix, "Handler requested stop", payload);
         return { buffer: remaining, completed: true };
       }
+      console.log(tracePrefix, "Handler consumed payload", payload);
     } catch (error) {
-      console.warn("Failed to parse SSE payload", error);
+      console.warn(tracePrefix, "Failed to parse SSE payload", error);
       remaining = `${event}\n\n${remaining}`;
       return { buffer: remaining, completed: false };
     }
@@ -389,7 +482,8 @@ function consumeSseBuffer(
 
 async function readSseStream(
   response: Response,
-  handler: SSEHandler
+  handler: SSEHandler,
+  traceId?: string
 ): Promise<void> {
   if (!response.ok) {
     throw new Error(await extractErrorMessage(response));
@@ -404,6 +498,9 @@ async function readSseStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let completed = false;
+  const tracePrefix = traceId ? `[ChatInterface][${traceId}]` : "[ChatInterface]";
+
+  console.log(tracePrefix, "Starting SSE stream reader");
 
   try {
     while (!completed) {
@@ -417,20 +514,28 @@ async function readSseStream(
       }
 
       if (chunk) {
+        console.log(tracePrefix, "Chunk received", {
+          length: chunk.length,
+          done,
+        });
         const normalized = chunk.replace(/\r\n/g, "\n");
-        const result = consumeSseBuffer(buffer + normalized, handler);
+        const result = consumeSseBuffer(buffer + normalized, handler, traceId);
         buffer = result.buffer;
         completed = result.completed;
       }
 
       if (completed) {
+        console.log(tracePrefix, "Stream completed by handler");
         await reader.cancel().catch(() => undefined);
         break;
       }
 
       if (done) {
         if (buffer) {
-          const result = consumeSseBuffer(buffer, handler);
+          console.log(tracePrefix, "Stream done, flushing buffer", {
+            bufferLength: buffer.length,
+          });
+          const result = consumeSseBuffer(buffer, handler, traceId);
           buffer = result.buffer;
           completed = result.completed;
         }
@@ -439,6 +544,7 @@ async function readSseStream(
     }
   } finally {
     try {
+      console.log(tracePrefix, "Releasing reader lock");
       reader.releaseLock();
     } catch {
       // ignore
