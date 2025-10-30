@@ -88,8 +88,21 @@ export function createSSEStream(
           jsonStart++;
         }
 
-        // Try to find a complete JSON object
-        if (jsonStart < buffer.length && buffer[jsonStart] === '{') {
+        // Check for [DONE] marker or other non-JSON payloads
+        const remainingAfterData = buffer.slice(jsonStart);
+        const nextNewline = remainingAfterData.indexOf('\n');
+        
+        // If we find \n\n after the data line, it's a complete event (even if not JSON)
+        if (nextNewline !== -1) {
+          const potentialEnd = jsonStart + nextNewline;
+          if (potentialEnd + 1 < buffer.length && buffer[potentialEnd + 1] === '\n') {
+            // Found \n\n, this is a complete event
+            eventEnd = potentialEnd + 2;
+          }
+        }
+
+        // Try to find a complete JSON object only if not already found
+        if (eventEnd === -1 && jsonStart < buffer.length && buffer[jsonStart] === '{') {
           let depth = 0;
           let inString = false;
           let escaped = false;
@@ -119,8 +132,18 @@ export function createSSEStream(
               } else if (char === '}') {
                 depth--;
                 if (depth === 0) {
-                  // Found complete JSON object
+                  // Found complete JSON object, now look for \n\n after it
                   eventEnd = i + 1;
+                  // Skip to the double newline
+                  while (eventEnd < buffer.length && buffer[eventEnd] !== '\n') {
+                    eventEnd++;
+                  }
+                  if (eventEnd < buffer.length && buffer[eventEnd] === '\n') {
+                    eventEnd++;
+                    if (eventEnd < buffer.length && buffer[eventEnd] === '\n') {
+                      eventEnd++;
+                    }
+                  }
                   break;
                 }
               }
