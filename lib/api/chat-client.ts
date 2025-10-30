@@ -65,7 +65,8 @@ export class MockChatClient implements ChatClient {
     )
   ) {}
 
-  async sendMessage(): Promise<Response> {
+  async sendMessage(request: ChatRequest): Promise<Response> {
+    void request;
     return this.mockResponse;
   }
 }

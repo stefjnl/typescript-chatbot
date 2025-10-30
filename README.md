@@ -18,15 +18,18 @@ An AI chatbot built with Next.js 14 App Router, TypeScript, and Tailwind CSS, fe
 The application follows Clean Architecture principles with clear separation of concerns:
 
 ### Domain Layer (`types/`)
+
 - Core business entities and value objects
 - Type definitions for chat messages, conversations, and API contracts
 
 ### Application Layer (`app/`, `components/`, `hooks/`)
+
 - UI components and pages
 - Custom hooks for state management
 - Orchestration between domain and infrastructure
 
 ### Infrastructure Layer (`lib/`)
+
 - External API integrations (NanoGPT)
 - Local storage implementations
 - Utility functions and helpers
@@ -66,6 +69,9 @@ The app reads variables from `.env` during development and from the runtime envi
 npm run dev         # Start the Next.js dev server with hot reload
 npm run lint        # Run ESLint checks
 npm run type-check  # Run TypeScript in isolated mode
+npm run test        # Run Vitest unit tests once
+npm run test:watch  # Run Vitest in watch mode
+npm run test:coverage # Generate coverage reports
 npm run build       # Create an optimized production build
 npm run start       # Start the production build locally
 ```
@@ -74,7 +80,7 @@ Recommended flow: iterate with `npm run dev`, run lint/type checks before commit
 
 ## Project Structure
 
-```
+```text
 ├── app/                    # Next.js App Router pages and API routes
 │   ├── api/chat/          # Chat API endpoint with streaming support
 │   ├── chat/[id]/         # Dynamic chat page routes
