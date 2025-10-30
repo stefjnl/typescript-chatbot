@@ -1,15 +1,15 @@
 "use client";
 
 import {
-    appendMessage,
-    createConversation,
-    exportConversations,
-    findConversation,
-    importConversations,
-    loadConversations,
-    persistConversations,
-    replaceMessage,
-    deleteConversation as storageDeleteConversation,
+  appendMessage,
+  createConversation,
+  exportConversations,
+  findConversation,
+  importConversations,
+  loadConversations,
+  persistConversations,
+  replaceMessage,
+  deleteConversation as storageDeleteConversation,
 } from "@/lib/storage/conversations";
 import type { ChatMessage, Conversation } from "@/types/chat";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -82,20 +82,40 @@ export function useConversations({
     setActiveConversationId(conversationId);
   }, []);
 
-  const sync = useCallback((next: Conversation[]) => {
-    setConversations(next);
-    persistConversations(next);
-  }, []);
+  const moveConversationToFront = useCallback(
+    (list: Conversation[], conversation: Conversation): Conversation[] => {
+      const index = list.findIndex((item) => item.id === conversation.id);
+      if (index === -1) {
+        return [conversation, ...list];
+      }
+
+      const next = [...list];
+      next.splice(index, 1);
+      next.unshift(conversation);
+      return next;
+    },
+    []
+  );
+
+  const sync = useCallback(
+    (updater: (current: Conversation[]) => Conversation[]) => {
+      setConversations((current) => {
+        const next = updater(current);
+        persistConversations(next);
+        return next;
+      });
+    },
+    []
+  );
 
   const createNewConversation = useCallback(
     (seedMessage?: ChatMessage) => {
       const conversation = createConversation(seedMessage);
-      const next = [conversation, ...conversations];
-      sync(next);
+      sync((current) => [conversation, ...current]);
       setActiveConversationId(conversation.id);
       return conversation;
     },
-    [conversations, sync]
+    [sync]
   );
 
   const deleteConversation = useCallback(
@@ -121,13 +141,9 @@ export function useConversations({
         title,
         updatedAt: new Date().toISOString(),
       };
-      const others = conversations.filter(
-        (item: Conversation) => item.id !== conversationId
-      );
-      const next = [updated, ...others];
-      sync(next);
+      sync((current) => moveConversationToFront(current, updated));
     },
-    [conversations, sync]
+    [moveConversationToFront, sync]
   );
 
   const addMessage = useCallback(
@@ -137,14 +153,10 @@ export function useConversations({
         return undefined;
       }
 
-      const others = conversations.filter(
-        (item: Conversation) => item.id !== conversationId
-      );
-      const next = [updated, ...others];
-      sync(next);
+      sync((current) => moveConversationToFront(current, updated));
       return updated;
     },
-    [conversations, sync]
+    [moveConversationToFront, sync]
   );
 
   const updateMessage = useCallback(
@@ -154,28 +166,18 @@ export function useConversations({
         return undefined;
       }
 
-      const others = conversations.filter(
-        (item: Conversation) => item.id !== conversationId
-      );
-      const next = [updated, ...others];
-      sync(next);
+      sync((current) => moveConversationToFront(current, updated));
       return updated;
     },
-    [conversations, sync]
+    [moveConversationToFront, sync]
   );
 
   const overwriteConversation = useCallback(
     (conversation: Conversation) => {
-      const next = [
-        conversation,
-        ...conversations.filter(
-          (item: Conversation) => item.id !== conversation.id
-        ),
-      ];
-      sync(next);
+      sync((current) => moveConversationToFront(current, conversation));
       return conversation;
     },
-    [conversations, sync]
+    [moveConversationToFront, sync]
   );
 
   const exportData = useCallback(() => exportConversations(), []);
